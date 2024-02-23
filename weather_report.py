@@ -1,16 +1,16 @@
-# 安装依赖 pip3 install requests html5lib bs4 schedule
 import os
 import requests
 import json
+import datetime
 from bs4 import BeautifulSoup
 
 # 从测试号信息获取
-appID = os.environ.get("APP_ID")
-appSecret = os.environ.get("APP_SECRET")
+appID = "wx9552f5aece196240"
+appSecret = "b936876afdd4afe40b348bcc0887d16b"
 # 收信人ID即 用户列表中的微信号
-openId = os.environ.get("OPEN_ID")
+openIds = ["oL2dz6Wx8-_jnjp7ak7uJ-MXtabY", "oL2dz6Tbe7KI3AjjQv4-T_WE8ZSs"]
 # 天气预报模板ID
-weather_template_id = os.environ.get("TEMPLATE_ID")
+weather_template_id = "1j7bpcBZu3fKuIaSPw6rKvwQiEqNs9hRp-DrjprXrRE"
 
 def get_weather(my_city):
     urls = ["http://www.weather.com.cn/textFC/hb.shtml",
@@ -52,7 +52,7 @@ def get_weather(my_city):
                     wind_night = list(wind_td_day_night.stripped_strings)[0] + list(wind_td_day_night.stripped_strings)[1]
 
                     # 如果没有白天的数据就使用夜间的
-                    temp = f"{low_temp}——{high_temp}摄氏度" if high_temp != "-" else f"{low_temp}摄氏度"
+                    temp = f"{low_temp}至{high_temp}摄氏度" if high_temp != "-" else f"{low_temp}摄氏度"
                     weather_typ = weather_typ_day if weather_typ_day != "-" else weather_type_night
                     wind = f"{wind_day}" if wind_day != "--" else f"{wind_night}"
                     return this_city, temp, weather_typ, wind
@@ -77,46 +77,63 @@ def get_daily_love():
     daily_love = sentence
     return daily_love
 
+def get_limitedNumber():
+    # 获取当前日期
+    today = datetime.datetime.now().strftime("%Y年%m月%d日")
 
-def send_weather(access_token, weather):
-    # touser 就是 openID
-    # template_id 就是模板ID
-    # url 就是点击模板跳转的url
-    # data就按这种格式写，time和text就是之前{{time.DATA}}中的那个time，value就是你要替换DATA的值
+    # 发送请求获取限行数据
+    url = "http://yw.jtgl.beijing.gov.cn/jgjxx/services/getRuleWithWeek"
+    response = requests.get(url)
 
+    # 解析限行数据
+    data = json.loads(response.text)
+    limited_data = data["result"]
+
+    # 查找今天的限行信息
+    today_limited_number = None
+    for limited in limited_data:
+        if limited["limitedTime"] == today:
+            today_limited_number = limited["limitedNumber"]
+            break
+
+    return today_limited_number
+
+def send_weather(access_token, weather, limitedNumber):
     import datetime
     today = datetime.date.today()
     today_str = today.strftime("%Y年%m月%d日")
 
-    body = {
-        "touser": openId.strip(),
-        "template_id": weather_template_id.strip(),
-        "url": "https://weixin.qq.com",
-        "data": {
-            "date": {
-                "value": today_str
-            },
-            "region": {
-                "value": weather[0]
-            },
-            "weather": {
-                "value": weather[2]
-            },
-            "temp": {
-                "value": weather[1]
-            },
-            "wind_dir": {
-                "value": weather[3]
-            },
-            "today_note": {
-                "value": get_daily_love()
+    for openId in openIds:
+        body = {
+            "touser": openId.strip(),
+            "template_id": weather_template_id.strip(),
+            "url": "https://weixin.qq.com",
+            "data": {
+                "date": {
+                    "value": today_str
+                },
+                "region": {
+                    "value": weather[0]
+                },
+                "weather": {
+                    "value": weather[2]
+                },
+                "temp": {
+                    "value": weather[1]
+                },
+                "wind_dir": {
+                    "value": weather[3]
+                },
+                "limitedNumber": {
+                    "value": limitedNumber
+                },
+                "today_note": {
+                    "value": get_daily_love()
+                }
             }
         }
-    }
-    url = 'https://api.weixin.qq.com/cgi-bin/message/template/send?access_token={}'.format(access_token)
-    print(requests.post(url, json.dumps(body)).text)
-
-
+        url = 'https://api.weixin.qq.com/cgi-bin/message/template/send?access_token={}'.format(access_token)
+        print(requests.post(url, json.dumps(body)).text)
 
 def weather_report(this_city):
     # 1.获取access_token
@@ -124,10 +141,10 @@ def weather_report(this_city):
     # 2. 获取天气
     weather = get_weather(this_city)
     print(f"天气信息： {weather}")
-    # 3. 发送消息
-    send_weather(access_token, weather)
-
-
+    # 3. 获取限号信息
+    limitedNumber = get_limitedNumber()
+    # 4. 发送消息
+    send_weather(access_token, weather, limitedNumber)
 
 if __name__ == '__main__':
-    weather_report("淄博")
+    weather_report("北京")
